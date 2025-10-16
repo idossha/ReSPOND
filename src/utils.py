@@ -120,16 +120,18 @@ def save_nifti(data, affine, header, filepath, dtype=np.float32):
 # STATISTICAL ANALYSIS
 # ==============================================================================
 
-def mannwhitneyu_voxelwise(responders, non_responders, verbose=True):
+def ttest_voxelwise(responders, non_responders, test_type='unpaired', verbose=True):
     """
-    Perform Mann-Whitney U test at each voxel
+    Perform t-test (paired or unpaired) at each voxel
     
     Parameters:
     -----------
     responders : ndarray (x, y, z, n_subjects)
-        Responder data
+        Responder data (group 1)
     non_responders : ndarray (x, y, z, n_subjects)
-        Non-responder data
+        Non-responder data (group 2)
+    test_type : str
+        Either 'paired' or 'unpaired' t-test
     verbose : bool
         Print progress information
     
@@ -137,17 +139,28 @@ def mannwhitneyu_voxelwise(responders, non_responders, verbose=True):
     --------
     p_values : ndarray (x, y, z)
         P-value at each voxel
-    u_statistics : ndarray (x, y, z)
-        U-statistic at each voxel
+    t_statistics : ndarray (x, y, z)
+        T-statistic at each voxel
     valid_mask : ndarray (x, y, z)
         Boolean mask of valid voxels
     """
     if verbose:
-        print("\nPerforming voxelwise Mann-Whitney U tests...")
+        test_name = "Paired" if test_type == 'paired' else "Unpaired (Independent Samples)"
+        print(f"\nPerforming voxelwise {test_name} t-tests...")
+    
+    # Validate test type
+    if test_type not in ['paired', 'unpaired']:
+        raise ValueError("test_type must be 'paired' or 'unpaired'")
+    
+    # For paired test, check that sample sizes match
+    if test_type == 'paired':
+        if responders.shape[-1] != non_responders.shape[-1]:
+            raise ValueError(f"Paired t-test requires equal sample sizes. "
+                           f"Got {responders.shape[-1]} vs {non_responders.shape[-1]} subjects")
     
     shape = responders.shape[:3]
     p_values = np.ones(shape)
-    u_statistics = np.zeros(shape)
+    t_statistics = np.zeros(shape)
     
     # Create mask of valid voxels (non-zero in at least some subjects)
     responder_mask = np.any(responders > 0, axis=-1)
@@ -169,24 +182,32 @@ def mannwhitneyu_voxelwise(responders, non_responders, verbose=True):
         resp_vals = responders[i, j, k, :]
         non_resp_vals = non_responders[i, j, k, :]
         
-        # Only test if we have variance in at least one group
-        if np.std(resp_vals) > 0 or np.std(non_resp_vals) > 0:
-            try:
-                u_stat, p_val = stats.mannwhitneyu(
-                    resp_vals, 
-                    non_resp_vals, 
-                    alternative='two-sided'
-                )
-                u_statistics[i, j, k] = u_stat
-                p_values[i, j, k] = p_val
-            except:
-                pass
+        # Only test if we have variance
+        if test_type == 'paired':
+            # For paired test, check variance of differences
+            diff = resp_vals - non_resp_vals
+            if np.std(diff) > 0:
+                try:
+                    t_stat, p_val = stats.ttest_rel(resp_vals, non_resp_vals)
+                    t_statistics[i, j, k] = t_stat
+                    p_values[i, j, k] = p_val
+                except:
+                    pass
+        else:
+            # For unpaired test, check variance in at least one group
+            if np.std(resp_vals) > 0 or np.std(non_resp_vals) > 0:
+                try:
+                    t_stat, p_val = stats.ttest_ind(resp_vals, non_resp_vals)
+                    t_statistics[i, j, k] = t_stat
+                    p_values[i, j, k] = p_val
+                except:
+                    pass
     
-    return p_values, u_statistics, valid_mask
+    return p_values, t_statistics, valid_mask
 
 
 def _run_single_permutation(test_data, test_coords, n_resp, n_total, cluster_threshold, 
-                           valid_mask, p_values_shape, seed=None):
+                           valid_mask, p_values_shape, test_type='unpaired', seed=None):
     """
     Helper function to run a single permutation (for parallel processing)
     
@@ -206,6 +227,8 @@ def _run_single_permutation(test_data, test_coords, n_resp, n_total, cluster_thr
         Boolean mask of valid voxels
     p_values_shape : tuple
         Shape of p_values array
+    test_type : str
+        Either 'paired' or 'unpaired' t-test
     seed : int, optional
         Random seed for reproducibility
     
@@ -217,13 +240,36 @@ def _run_single_permutation(test_data, test_coords, n_resp, n_total, cluster_thr
     if seed is not None:
         np.random.seed(seed)
     
-    # Randomly shuffle group labels
-    perm_idx = np.random.permutation(n_total)
-    perm_test_data = test_data[:, perm_idx]
-    
-    # Split into groups
-    perm_resp_data = perm_test_data[:, :n_resp]
-    perm_non_resp_data = perm_test_data[:, n_resp:]
+    if test_type == 'paired':
+        # For paired test, randomly flip signs of differences
+        # This preserves the pairing structure
+        perm_test_data = test_data.copy()
+        n_voxels = test_data.shape[0]
+        
+        # Split back into groups
+        resp_data = test_data[:, :n_resp]
+        non_resp_data = test_data[:, n_resp:]
+        
+        # Randomly flip signs for each pair
+        sign_flips = np.random.choice([-1, 1], size=n_resp)
+        
+        # Create permuted data by flipping differences
+        for i in range(n_voxels):
+            mean_pair = (resp_data[i, :] + non_resp_data[i, :]) / 2
+            diff_pair = (resp_data[i, :] - non_resp_data[i, :]) / 2
+            perm_test_data[i, :n_resp] = mean_pair + sign_flips * diff_pair
+            perm_test_data[i, n_resp:] = mean_pair - sign_flips * diff_pair
+        
+        perm_resp_data = perm_test_data[:, :n_resp]
+        perm_non_resp_data = perm_test_data[:, n_resp:]
+    else:
+        # For unpaired test, randomly shuffle group labels
+        perm_idx = np.random.permutation(n_total)
+        perm_test_data = test_data[:, perm_idx]
+        
+        # Split into groups
+        perm_resp_data = perm_test_data[:, :n_resp]
+        perm_non_resp_data = perm_test_data[:, n_resp:]
     
     # Compute permuted p-values
     perm_p_values = np.ones(p_values_shape)
@@ -233,13 +279,18 @@ def _run_single_permutation(test_data, test_coords, n_resp, n_total, cluster_thr
         resp_vals = perm_resp_data[idx, :]
         non_resp_vals = perm_non_resp_data[idx, :]
         
-        if np.std(resp_vals) > 0 or np.std(non_resp_vals) > 0:
-            try:
-                _, p_val = stats.mannwhitneyu(resp_vals, non_resp_vals, 
-                                              alternative='two-sided')
-                perm_p_values[i, j, k] = p_val
-            except:
-                pass
+        try:
+            if test_type == 'paired':
+                diff = resp_vals - non_resp_vals
+                if np.std(diff) > 0:
+                    _, p_val = stats.ttest_rel(resp_vals, non_resp_vals)
+                    perm_p_values[i, j, k] = p_val
+            else:
+                if np.std(resp_vals) > 0 or np.std(non_resp_vals) > 0:
+                    _, p_val = stats.ttest_ind(resp_vals, non_resp_vals)
+                    perm_p_values[i, j, k] = p_val
+        except:
+            pass
     
     # Find clusters in permuted data
     perm_mask = (perm_p_values < cluster_threshold) & valid_mask
@@ -256,7 +307,7 @@ def _run_single_permutation(test_data, test_coords, n_resp, n_total, cluster_thr
 
 def cluster_based_correction(responders, non_responders, p_values, valid_mask, 
                             cluster_threshold=0.01, n_permutations=500, alpha=0.05,
-                            n_jobs=-1, verbose=True):
+                            test_type='unpaired', n_jobs=-1, verbose=True):
     """
     Apply cluster-based permutation correction for multiple comparisons
     
@@ -279,6 +330,8 @@ def cluster_based_correction(responders, non_responders, p_values, valid_mask,
         Number of permutations for null distribution (500-1000 recommended)
     alpha : float
         Significance level for cluster-level correction
+    test_type : str
+        Either 'paired' or 'unpaired' t-test for permutations
     n_jobs : int
         Number of parallel jobs. -1 uses all available CPU cores. 1 disables parallelization.
     verbose : bool
@@ -380,6 +433,7 @@ def cluster_based_correction(responders, non_responders, p_values, valid_mask,
             max_size = _run_single_permutation(
                 test_data, test_coords, n_resp, n_total, 
                 cluster_threshold, valid_mask, p_values.shape, 
+                test_type=test_type,
                 seed=seeds[perm]
             )
             null_max_cluster_sizes.append(max_size)
@@ -389,6 +443,7 @@ def cluster_based_correction(responders, non_responders, p_values, valid_mask,
             delayed(_run_single_permutation)(
                 test_data, test_coords, n_resp, n_total,
                 cluster_threshold, valid_mask, p_values.shape,
+                test_type=test_type,
                 seed=seeds[perm]
             ) for perm in range(n_permutations)
         )
@@ -740,7 +795,8 @@ def generate_summary(responders, non_responders, sig_mask, correction_threshold,
                     params=None,
                     group1_name="Responders",
                     group2_name="Non-Responders",
-                    value_metric="Current Intensity"):
+                    value_metric="Current Intensity",
+                    test_type="unpaired"):
     """
     Generate comprehensive summary report
     
@@ -771,6 +827,8 @@ def generate_summary(responders, non_responders, sig_mask, correction_threshold,
         Name for second group (default: "Non-Responders")
     value_metric : str
         Name of the metric being compared (default: "Current Intensity")
+    test_type : str
+        Type of t-test used: 'paired' or 'unpaired' (default: "unpaired")
     """
     # Set default parameters if not provided
     if params is None:
@@ -791,7 +849,8 @@ def generate_summary(responders, non_responders, sig_mask, correction_threshold,
         
         f.write("ANALYSIS DETAILS:\n")
         f.write("-" * 70 + "\n")
-        f.write(f"Statistical Test: Mann-Whitney U (non-parametric)\n")
+        test_name = "Paired t-test" if test_type == "paired" else "Unpaired (Independent Samples) t-test"
+        f.write(f"Statistical Test: {test_name}\n")
         
         if correction_method == "cluster":
             f.write(f"Multiple Comparison Correction: Cluster-based Permutation\n")

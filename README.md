@@ -32,12 +32,15 @@ stats/
 
 ## Statistical Approach
 
-- **Test**: Mann-Whitney U test (non-parametric, ideal for non-normal neuroimaging data)
+- **Test**: T-test (configurable: paired or unpaired)
+  - Paired: For matched/repeated measures designs
+  - Unpaired: For independent groups (default)
 - **Multiple Comparison Correction**: Cluster-based permutation testing
-  - Cluster-forming threshold: p < 0.0X (uncorrected)
-  - X permutations to build null distribution (sufficient for accurate estimation)
+  - Cluster-forming threshold: p < 0.01 (uncorrected, configurable)
+  - 1000 permutations to build null distribution (configurable)
   - Tests all valid voxels in permutations for comprehensive null distribution
-  - Cluster-level significance: α = 0.0X
+  - Cluster-level significance: α = 0.05 (configurable)
+  - Paired test uses sign-flipping; unpaired uses label permutation
 - This approach has more power than voxelwise corrections for spatially contiguous effects
 
 ## Features
@@ -85,14 +88,16 @@ For custom analyses and integration with your workflow, see [`CLI.md`](CLI.md) f
 ```python
 import sys
 sys.path.append('src')  # Add src to path
-from utils import load_subject_data, mannwhitneyu_voxelwise, cluster_based_correction
+from utils import load_subject_data, ttest_voxelwise, cluster_based_correction
 
 # Load data
 responders, non_responders, img = load_subject_data('data/subject_class.csv', 'data')
 
-# Run analysis
-p_values, _, valid_mask = mannwhitneyu_voxelwise(responders, non_responders)
-sig_mask, _, clusters = cluster_based_correction(responders, non_responders, p_values, valid_mask)
+# Run analysis (unpaired t-test)
+p_values, _, valid_mask = ttest_voxelwise(responders, non_responders, test_type='unpaired')
+sig_mask, _, clusters, _, _ = cluster_based_correction(
+    responders, non_responders, p_values, valid_mask, test_type='unpaired'
+)
 ```
 
 ### Post-Hoc Atlas Analysis
@@ -218,9 +223,11 @@ This will:
 ## Notes
 
 - All analyses are performed in MNI standard space
-- The Mann-Whitney U test is robust to non-normal distributions
+- T-tests can be configured as paired (for matched designs) or unpaired (for independent groups)
 - Cluster-based permutation correction controls for family-wise error while maintaining power
-- Permutation testing builds an empirical null distribution without parametric assumptions
+- Permutation testing builds an empirical null distribution:
+  - Unpaired: Label permutation (shuffles group assignments)
+  - Paired: Sign-flipping (preserves pairing structure)
 - Clusters are identified using 26-connectivity (3D)
 - This approach is particularly effective for detecting spatially contiguous effects
 - Atlases are automatically resampled to match data dimensions using nearest-neighbor interpolation

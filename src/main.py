@@ -23,7 +23,7 @@ import time
 
 from utils import (
     load_subject_data,
-    mannwhitneyu_voxelwise,
+    ttest_voxelwise,
     cluster_based_correction,
     cluster_analysis,
     atlas_overlap_analysis,
@@ -67,8 +67,9 @@ CONFIG = {
     ],
     
     # Statistical parameters
+    'test_type': 'unpaired',        # 'paired' or 'unpaired' t-test
     'cluster_threshold': 0.01,      # p < 0.01 for cluster formation
-    'n_permutations': 1000,         # Number of permutations
+    'n_permutations': 500,         # Number of permutations
     'alpha': 0.05,                  # Cluster-level significance
     'n_jobs': -1,                   # Number of parallel jobs (-1 = all cores, 1 = sequential)
     
@@ -161,6 +162,7 @@ def main():
     logger.info(f"  Output directory: {CONFIG['output_dir']}")
     logger.info(f"  Assets directory: {CONFIG['assets_dir']}")
     logger.info(f"  CSV file: {CONFIG['csv_file']}")
+    logger.info(f"  Statistical test: {CONFIG['test_type'].capitalize()} t-test")
     logger.info(f"  Cluster threshold: {CONFIG['cluster_threshold']}")
     logger.info(f"  Number of permutations: {CONFIG['n_permutations']}")
     logger.info(f"  Alpha level: {CONFIG['alpha']}")
@@ -176,7 +178,7 @@ def main():
     # -------------------------------------------------------------------------
     # 1. LOAD DATA
     # -------------------------------------------------------------------------
-    logger.info("\n[1/7] LOADING SUBJECT DATA")
+    logger.info("\n[1/8] LOADING SUBJECT DATA")
     logger.info("-" * 70)
     step_start = time.time()
     
@@ -193,13 +195,14 @@ def main():
     # -------------------------------------------------------------------------
     # 2. VOXELWISE STATISTICAL TEST
     # -------------------------------------------------------------------------
-    logger.info("\n[2/7] RUNNING VOXELWISE STATISTICAL TESTS")
+    logger.info("\n[2/8] RUNNING VOXELWISE STATISTICAL TESTS")
     logger.info("-" * 70)
     step_start = time.time()
     
-    p_values, u_statistics, valid_mask = mannwhitneyu_voxelwise(
+    p_values, t_statistics, valid_mask = ttest_voxelwise(
         responders, 
-        non_responders
+        non_responders,
+        test_type=CONFIG['test_type']
     )
     
     n_valid = np.sum(valid_mask)
@@ -211,7 +214,7 @@ def main():
     # -------------------------------------------------------------------------
     # 3. CLUSTER-BASED PERMUTATION CORRECTION
     # -------------------------------------------------------------------------
-    logger.info("\n[3/7] APPLYING CLUSTER-BASED PERMUTATION CORRECTION")
+    logger.info("\n[3/8] APPLYING CLUSTER-BASED PERMUTATION CORRECTION")
     logger.info("-" * 70)
     step_start = time.time()
     
@@ -223,6 +226,7 @@ def main():
         cluster_threshold=CONFIG['cluster_threshold'],
         n_permutations=CONFIG['n_permutations'],
         alpha=CONFIG['alpha'],
+        test_type=CONFIG['test_type'],
         n_jobs=CONFIG['n_jobs']
     )
     
@@ -234,7 +238,7 @@ def main():
     # -------------------------------------------------------------------------
     # 4. CLUSTER ANALYSIS
     # -------------------------------------------------------------------------
-    logger.info("\n[4/7] ANALYZING SIGNIFICANT CLUSTERS")
+    logger.info("\n[4/8] ANALYZING SIGNIFICANT CLUSTERS")
     logger.info("-" * 70)
     step_start = time.time()
     
@@ -353,7 +357,8 @@ def main():
         params=summary_params,
         group1_name=CONFIG['group1_name'],
         group2_name=CONFIG['group2_name'],
-        value_metric=CONFIG['value_metric']
+        value_metric=CONFIG['value_metric'],
+        test_type=CONFIG['test_type']
     )
     logger.info(f"Saved: {CONFIG['output_summary']}")
     logger.info(f"Step completed in {time.time() - step_start:.2f} seconds")

@@ -1,0 +1,127 @@
+======================================================================
+VOXELWISE STATISTICAL ANALYSIS SUMMARY
+======================================================================
+
+ANALYSIS DETAILS:
+----------------------------------------------------------------------
+Statistical Test: Mann-Whitney U (non-parametric)
+Multiple Comparison Correction: Cluster-based Permutation
+Cluster-forming threshold: p < 0.01 (uncorrected)
+Number of permutations: 1000
+Cluster-level alpha: 0.05
+Cluster size threshold: 28.0 voxels
+Parallel processing: 12 cores
+
+SAMPLE INFORMATION:
+----------------------------------------------------------------------
+Number of Responders: 12
+Number of Non-Responders: 17
+Total Subjects: 29
+
+RESULTS:
+----------------------------------------------------------------------
+Number of Significant Voxels: 536
+
+Mean Current Intensity in Significant Voxels:
+  Responders: 0.3328
+  Non-Responders: 0.1080
+  Difference (Responders - Non-Responders): 0.2248
+
+Number of Clusters: 14
+
+TOP 10 CLUSTERS (by size):
+----------------------------------------------------------------------
+1. Cluster 10: 57 voxels
+   MNI Center: (1.1, -2.6, 30.7)
+2. Cluster 1: 55 voxels
+   MNI Center: (61.3, -26.9, -10.3)
+3. Cluster 3: 48 voxels
+   MNI Center: (57.2, -13.9, -17.2)
+4. Cluster 6: 41 voxels
+   MNI Center: (38.8, 62.2, 4.9)
+5. Cluster 7: 38 voxels
+   MNI Center: (36.4, 24.4, 34.4)
+6. Cluster 12: 38 voxels
+   MNI Center: (-37.7, 27.2, 24.1)
+7. Cluster 4: 36 voxels
+   MNI Center: (46.4, -50.6, 41.8)
+8. Cluster 8: 36 voxels
+   MNI Center: (30.8, -36.3, -40.4)
+9. Cluster 5: 34 voxels
+   MNI Center: (44.9, 56.8, -2.3)
+10. Cluster 9: 32 voxels
+   MNI Center: (18.4, 46.6, 48.4)
+
+======================================================================
+ATLAS OVERLAP ANALYSIS
+======================================================================
+
+
+HarvardOxford-cort-maxprob-thr0-1mm.nii.gz
+----------------------------------------------------------------------
+Number of regions with significant voxels: 11
+
+Top 20 regions:
+ 1. Region  12:  135 voxels (  0.4% of region)
+ 2. Region   1:  107 voxels (  0.1% of region)
+ 3. Region   4:   76 voxels (  0.1% of region)
+ 4. Region  29:   57 voxels (  0.2% of region)
+ 5. Region  21:   36 voxels (  0.1% of region)
+ 6. Region  18:   30 voxels (  0.1% of region)
+ 7. Region   6:   16 voxels (  0.1% of region)
+ 8. Region  10:   15 voxels (  0.1% of region)
+ 9. Region  46:   15 voxels (  0.1% of region)
+10. Region   7:    9 voxels (  0.0% of region)
+11. Region   8:    4 voxels (  0.0% of region)
+
+Talairach-labels-1mm.nii.gz
+----------------------------------------------------------------------
+Number of regions with significant voxels: 30
+
+Top 20 regions:
+ 1. Region  28:   77 voxels (  0.4% of region)
+ 2. Region 196:   66 voxels (  0.2% of region)
+ 3. Region  24:   32 voxels (  0.1% of region)
+ 4. Region  42:   30 voxels (  0.1% of region)
+ 5. Region 860:   28 voxels (  0.2% of region)
+ 6. Region 195:   27 voxels (  0.1% of region)
+ 7. Region 912:   27 voxels (  0.9% of region)
+ 8. Region 394:   25 voxels (  2.1% of region)
+ 9. Region 880:   21 voxels (  0.2% of region)
+10. Region  79:   20 voxels (  0.3% of region)
+11. Region 194:   18 voxels (  0.0% of region)
+12. Region 687:   16 voxels (  0.1% of region)
+13. Region 941:   16 voxels (  0.4% of region)
+14. Region 930:   15 voxels (  0.3% of region)
+15. Region 193:   11 voxels (  0.0% of region)
+16. Region   4:    9 voxels (  0.1% of region)
+17. Region 107:    8 voxels (  0.0% of region)
+18. Region 1036:    8 voxels (  0.2% of region)
+19. Region  52:    6 voxels (  0.0% of region)
+20. Region 154:    6 voxels (  0.1% of region)
+
+MNI_Glasser_HCP_v1.0.nii.gz
+----------------------------------------------------------------------
+Number of regions with significant voxels: 24
+
+Top 20 regions:
+ 1. Region 1077:   37 voxels (  1.0% of region)
+ 2. Region 1070:   32 voxels (  0.8% of region)
+ 3. Region  78:   26 voxels (  0.9% of region)
+ 4. Region  83:   21 voxels (  0.7% of region)
+ 5. Region 1175:   20 voxels (  0.6% of region)
+ 6. Region 1085:   19 voxels (  0.7% of region)
+ 7. Region 1177:   14 voxels (  0.4% of region)
+ 8. Region 1058:   13 voxels (  1.0% of region)
+ 9. Region 1073:   13 voxels (  0.4% of region)
+10. Region 1014:   12 voxels (  0.4% of region)
+11. Region 1124:   10 voxels (  0.7% of region)
+12. Region 1130:    8 voxels (  0.3% of region)
+13. Region 1149:    7 voxels (  0.1% of region)
+14. Region  42:    6 voxels (  0.3% of region)
+15. Region 176:    6 voxels (  0.4% of region)
+16. Region 1171:    6 voxels (  0.3% of region)
+17. Region 1084:    3 voxels (  0.1% of region)
+18. Region  58:    1 voxels (  0.1% of region)
+19. Region 1032:    1 voxels (  0.1% of region)
+20. Region 1057:    1 voxels (  0.1% of region)

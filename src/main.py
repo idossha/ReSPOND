@@ -189,13 +189,14 @@ def main():
     logger.info("-" * 70)
     step_start = time.time()
     
-    responders, non_responders, template_img = load_subject_data(
+    responders, non_responders, template_img, resp_ids, non_resp_ids = load_subject_data(
         csv_file, 
-        CONFIG['data_dir']
+        CONFIG['data_dir'],
+        return_ids=True
     )
     
-    logger.info(f"Loaded {responders.shape[-1]} {CONFIG['group1_name']}")
-    logger.info(f"Loaded {non_responders.shape[-1]} {CONFIG['group2_name']}")
+    logger.info(f"Loaded {responders.shape[-1]} {CONFIG['group1_name']}: {resp_ids}")
+    logger.info(f"Loaded {non_responders.shape[-1]} {CONFIG['group2_name']}: {non_resp_ids}")
     logger.info(f"Image shape: {responders.shape[:3]}")
     logger.info(f"Step completed in {time.time() - step_start:.2f} seconds")
     
@@ -219,12 +220,38 @@ def main():
     logger.info(f"Voxels with p<0.01: {np.sum((p_values < 0.01) & valid_mask)}")
     logger.info(f"Step completed in {time.time() - step_start:.2f} seconds")
     
+    # Log observed clusters before permutation correction
+    from scipy.ndimage import label as scipy_label
+    observed_mask = (p_values < CONFIG['cluster_threshold']) & valid_mask
+    observed_labeled, n_observed_clusters = scipy_label(observed_mask)
+    
+    logger.info(f"\nObserved clusters at p < {CONFIG['cluster_threshold']} (before permutation correction):")
+    logger.info(f"Total clusters found: {n_observed_clusters}")
+    
+    if n_observed_clusters > 0:
+        observed_cluster_sizes = []
+        for cluster_id in range(1, n_observed_clusters + 1):
+            size = np.sum(observed_labeled == cluster_id)
+            observed_cluster_sizes.append(size)
+        
+        observed_cluster_sizes.sort(reverse=True)
+        
+        logger.info(f"\nTop 10 largest observed clusters (before permutation correction):")
+        for i, size in enumerate(observed_cluster_sizes[:10], 1):
+            logger.info(f"  Cluster {i:2d}: {size:6d} voxels")
+        
+        logger.info(f"\nLargest observed cluster: {observed_cluster_sizes[0]} voxels")
+        logger.info(f"Total voxels in all clusters: {sum(observed_cluster_sizes)}")
+    
     # -------------------------------------------------------------------------
     # 3. CLUSTER-BASED PERMUTATION CORRECTION
     # -------------------------------------------------------------------------
     logger.info("\n[3/8] APPLYING CLUSTER-BASED PERMUTATION CORRECTION")
     logger.info("-" * 70)
     step_start = time.time()
+    
+    # Set up permutation log file path
+    permutation_log_file = os.path.join(CONFIG['output_dir'], 'permutation_details.txt')
     
     sig_mask, cluster_threshold, sig_clusters, null_distribution, all_clusters = cluster_based_correction(
         responders, 
@@ -236,7 +263,11 @@ def main():
         alpha=CONFIG['alpha'],
         test_type=CONFIG['test_type'],
         alternative=CONFIG['alternative'],
-        n_jobs=CONFIG['n_jobs']
+        n_jobs=CONFIG['n_jobs'],
+        save_permutation_log=True,
+        permutation_log_file=permutation_log_file,
+        subject_ids_resp=resp_ids,
+        subject_ids_non_resp=non_resp_ids
     )
     
     logger.info(f"Cluster size threshold: {cluster_threshold:.1f} voxels")
@@ -367,7 +398,8 @@ def main():
         group1_name=CONFIG['group1_name'],
         group2_name=CONFIG['group2_name'],
         value_metric=CONFIG['value_metric'],
-        test_type=CONFIG['test_type']
+        test_type=CONFIG['test_type'],
+        observed_cluster_sizes=observed_cluster_sizes if n_observed_clusters > 0 else None
     )
     logger.info(f"Saved: {CONFIG['output_summary']}")
     logger.info(f"Step completed in {time.time() - step_start:.2f} seconds")
@@ -393,7 +425,8 @@ def main():
     logger.info(f"  5. Average {CONFIG['group2_name']}: {avg_non_resp_file}")
     logger.info(f"  6. Difference map: {diff_file}")
     logger.info(f"  7. Permutation null distribution plot: {perm_plot_file}")
-    logger.info(f"  8. Log file: {log_file}")
+    logger.info(f"  8. Permutation details log: {permutation_log_file}")
+    logger.info(f"  9. Log file: {log_file}")
     logger.info("")
     logger.info("NEXT STEPS:")
     logger.info("  - Visualize: Use FSLeyes, SPM, or nilearn")

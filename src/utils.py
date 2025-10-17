@@ -1044,7 +1044,8 @@ def generate_summary(responders, non_responders, sig_mask, correction_threshold,
                     group1_name="Responders",
                     group2_name="Non-Responders",
                     value_metric="Current Intensity",
-                    test_type="unpaired"):
+                    test_type="unpaired",
+                    observed_cluster_sizes=None):
     """
     Generate comprehensive summary report
     
@@ -1077,6 +1078,8 @@ def generate_summary(responders, non_responders, sig_mask, correction_threshold,
         Name of the metric being compared (default: "Current Intensity")
     test_type : str
         Type of t-test used: 'paired' or 'unpaired' (default: "unpaired")
+    observed_cluster_sizes : list, optional
+        List of observed cluster sizes (before permutation correction) sorted largest to smallest
     """
     # Set default parameters if not provided
     if params is None:
@@ -1121,6 +1124,19 @@ def generate_summary(responders, non_responders, sig_mask, correction_threshold,
             f.write(f"Multiple Comparison Correction: FDR (False Discovery Rate)\n")
             f.write(f"Significance Level: alpha = {alpha}\n")
             f.write(f"FDR-corrected p-value threshold: {correction_threshold:.6f}\n\n")
+        
+        # Add observed clusters information if provided
+        if observed_cluster_sizes is not None and len(observed_cluster_sizes) > 0:
+            f.write("OBSERVED CLUSTERS (BEFORE PERMUTATION CORRECTION):\n")
+            f.write("-" * 70 + "\n")
+            f.write(f"Total clusters at p < {cluster_threshold_param}: {len(observed_cluster_sizes)}\n")
+            f.write(f"Largest observed cluster: {observed_cluster_sizes[0]} voxels\n")
+            f.write(f"Total voxels in all clusters: {sum(observed_cluster_sizes)}\n\n")
+            
+            f.write("Top 10 Largest Observed Clusters:\n")
+            for i, size in enumerate(observed_cluster_sizes[:10], 1):
+                f.write(f"  {i:2d}. {size:6d} voxels\n")
+            f.write("\n")
         
         f.write("SAMPLE INFORMATION:\n")
         f.write("-" * 70 + "\n")

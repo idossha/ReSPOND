@@ -120,7 +120,7 @@ def save_nifti(data, affine, header, filepath, dtype=np.float32):
 # STATISTICAL ANALYSIS
 # ==============================================================================
 
-def _fast_ttest_ind(a, b):
+def _fast_ttest_ind(a, b, alternative='two-sided'):
     """
     Fast manual computation of independent samples t-test
     ~13x faster than scipy.stats.ttest_ind
@@ -128,14 +128,19 @@ def _fast_ttest_ind(a, b):
     Parameters:
     -----------
     a, b : array-like
-        Sample arrays
+        Sample arrays (group 1 and group 2)
+    alternative : {'two-sided', 'greater', 'less'}, optional
+        Defines the alternative hypothesis (default: 'two-sided'):
+        * 'two-sided': means are different (a ≠ b)
+        * 'greater': mean of a is greater than mean of b (a > b)
+        * 'less': mean of a is less than mean of b (a < b)
     
     Returns:
     --------
     t_stat : float
         T-statistic
     p_val : float
-        Two-tailed p-value
+        P-value for the specified alternative hypothesis
     """
     n1, n2 = len(a), len(b)
     mean1, mean2 = np.mean(a), np.mean(b)
@@ -154,13 +159,24 @@ def _fast_ttest_ind(a, b):
     # Degrees of freedom
     df = n1 + n2 - 2
     
-    # Two-tailed p-value
-    p_val = 2 * stats.t.sf(np.abs(t_stat), df)
+    # P-value based on alternative hypothesis
+    if alternative == 'two-sided':
+        p_val = 2 * stats.t.sf(np.abs(t_stat), df)
+    elif alternative == 'greater':
+        # One-sided: test if mean(a) > mean(b)
+        # P(T > t_stat) = sf(t_stat)
+        p_val = stats.t.sf(t_stat, df)
+    elif alternative == 'less':
+        # One-sided: test if mean(a) < mean(b)
+        # P(T < t_stat) = cdf(t_stat) = sf(-t_stat)
+        p_val = stats.t.sf(-t_stat, df)
+    else:
+        raise ValueError("alternative must be 'two-sided', 'greater', or 'less'")
     
     return t_stat, p_val
 
 
-def _fast_ttest_rel(a, b):
+def _fast_ttest_rel(a, b, alternative='two-sided'):
     """
     Fast manual computation of paired samples t-test
     ~10x faster than scipy.stats.ttest_rel
@@ -169,13 +185,18 @@ def _fast_ttest_rel(a, b):
     -----------
     a, b : array-like
         Paired sample arrays
+    alternative : {'two-sided', 'greater', 'less'}, optional
+        Defines the alternative hypothesis (default: 'two-sided'):
+        * 'two-sided': means are different (a ≠ b)
+        * 'greater': mean of a is greater than mean of b (a > b)
+        * 'less': mean of a is less than mean of b (a < b)
     
     Returns:
     --------
     t_stat : float
         T-statistic
     p_val : float
-        Two-tailed p-value
+        P-value for the specified alternative hypothesis
     """
     # Compute differences
     diff = a - b
@@ -195,13 +216,22 @@ def _fast_ttest_rel(a, b):
     # Degrees of freedom
     df = n - 1
     
-    # Two-tailed p-value
-    p_val = 2 * stats.t.sf(np.abs(t_stat), df)
+    # P-value based on alternative hypothesis
+    if alternative == 'two-sided':
+        p_val = 2 * stats.t.sf(np.abs(t_stat), df)
+    elif alternative == 'greater':
+        # One-sided: test if mean(a) > mean(b)
+        p_val = stats.t.sf(t_stat, df)
+    elif alternative == 'less':
+        # One-sided: test if mean(a) < mean(b)
+        p_val = stats.t.sf(-t_stat, df)
+    else:
+        raise ValueError("alternative must be 'two-sided', 'greater', or 'less'")
     
     return t_stat, p_val
 
 
-def ttest_voxelwise(responders, non_responders, test_type='unpaired', verbose=True):
+def ttest_voxelwise(responders, non_responders, test_type='unpaired', alternative='two-sided', verbose=True):
     """
     Perform t-test (paired or unpaired) at each voxel using optimized manual computation
     
@@ -215,6 +245,11 @@ def ttest_voxelwise(responders, non_responders, test_type='unpaired', verbose=Tr
         Non-responder data (group 2)
     test_type : str
         Either 'paired' or 'unpaired' t-test
+    alternative : {'two-sided', 'greater', 'less'}, optional
+        Defines the alternative hypothesis (default: 'two-sided'):
+        * 'two-sided': means are different (responders ≠ non-responders)
+        * 'greater': responders have higher values (responders > non-responders)
+        * 'less': responders have lower values (responders < non-responders)
     verbose : bool
         Print progress information
     
@@ -229,7 +264,12 @@ def ttest_voxelwise(responders, non_responders, test_type='unpaired', verbose=Tr
     """
     if verbose:
         test_name = "Paired" if test_type == 'paired' else "Unpaired (Independent Samples)"
-        print(f"\nPerforming voxelwise {test_name} t-tests (optimized)...")
+        alt_text = ""
+        if alternative == 'greater':
+            alt_text = " (one-sided: responders > non-responders)"
+        elif alternative == 'less':
+            alt_text = " (one-sided: responders < non-responders)"
+        print(f"\nPerforming voxelwise {test_name} t-tests{alt_text} (optimized)...")
     
     # Validate test type
     if test_type not in ['paired', 'unpaired']:
@@ -271,7 +311,7 @@ def ttest_voxelwise(responders, non_responders, test_type='unpaired', verbose=Tr
             diff = resp_vals - non_resp_vals
             if np.std(diff) > 0:
                 try:
-                    t_stat, p_val = _fast_ttest_rel(resp_vals, non_resp_vals)
+                    t_stat, p_val = _fast_ttest_rel(resp_vals, non_resp_vals, alternative=alternative)
                     t_statistics[i, j, k] = t_stat
                     p_values[i, j, k] = p_val
                 except:
@@ -280,7 +320,7 @@ def ttest_voxelwise(responders, non_responders, test_type='unpaired', verbose=Tr
             # For unpaired test, check variance in at least one group
             if np.std(resp_vals) > 0 or np.std(non_resp_vals) > 0:
                 try:
-                    t_stat, p_val = _fast_ttest_ind(resp_vals, non_resp_vals)
+                    t_stat, p_val = _fast_ttest_ind(resp_vals, non_resp_vals, alternative=alternative)
                     t_statistics[i, j, k] = t_stat
                     p_values[i, j, k] = p_val
                 except:
@@ -290,7 +330,8 @@ def ttest_voxelwise(responders, non_responders, test_type='unpaired', verbose=Tr
 
 
 def _run_single_permutation(test_data, test_coords, n_resp, n_total, cluster_threshold, 
-                           valid_mask, p_values_shape, test_type='unpaired', seed=None):
+                           valid_mask, p_values_shape, test_type='unpaired', 
+                           alternative='two-sided', seed=None):
     """
     Helper function to run a single permutation (for parallel processing)
     
@@ -312,6 +353,8 @@ def _run_single_permutation(test_data, test_coords, n_resp, n_total, cluster_thr
         Shape of p_values array
     test_type : str
         Either 'paired' or 'unpaired' t-test
+    alternative : {'two-sided', 'greater', 'less'}, optional
+        Alternative hypothesis (default: 'two-sided')
     seed : int, optional
         Random seed for reproducibility
     
@@ -366,11 +409,11 @@ def _run_single_permutation(test_data, test_coords, n_resp, n_total, cluster_thr
             if test_type == 'paired':
                 diff = resp_vals - non_resp_vals
                 if np.std(diff) > 0:
-                    _, p_val = _fast_ttest_rel(resp_vals, non_resp_vals)
+                    _, p_val = _fast_ttest_rel(resp_vals, non_resp_vals, alternative=alternative)
                     perm_p_values[i, j, k] = p_val
             else:
                 if np.std(resp_vals) > 0 or np.std(non_resp_vals) > 0:
-                    _, p_val = _fast_ttest_ind(resp_vals, non_resp_vals)
+                    _, p_val = _fast_ttest_ind(resp_vals, non_resp_vals, alternative=alternative)
                     perm_p_values[i, j, k] = p_val
         except:
             pass
@@ -390,7 +433,7 @@ def _run_single_permutation(test_data, test_coords, n_resp, n_total, cluster_thr
 
 def cluster_based_correction(responders, non_responders, p_values, valid_mask, 
                             cluster_threshold=0.01, n_permutations=500, alpha=0.05,
-                            test_type='unpaired', n_jobs=-1, verbose=True):
+                            test_type='unpaired', alternative='two-sided', n_jobs=-1, verbose=True):
     """
     Apply cluster-based permutation correction for multiple comparisons
     
@@ -415,6 +458,8 @@ def cluster_based_correction(responders, non_responders, p_values, valid_mask,
         Significance level for cluster-level correction
     test_type : str
         Either 'paired' or 'unpaired' t-test for permutations
+    alternative : {'two-sided', 'greater', 'less'}, optional
+        Alternative hypothesis (default: 'two-sided')
     n_jobs : int
         Number of parallel jobs. -1 uses all available CPU cores. 1 disables parallelization.
     verbose : bool
@@ -517,6 +562,7 @@ def cluster_based_correction(responders, non_responders, p_values, valid_mask,
                 test_data, test_coords, n_resp, n_total, 
                 cluster_threshold, valid_mask, p_values.shape, 
                 test_type=test_type,
+                alternative=alternative,
                 seed=seeds[perm]
             )
             null_max_cluster_sizes.append(max_size)
@@ -527,6 +573,7 @@ def cluster_based_correction(responders, non_responders, p_values, valid_mask,
                 test_data, test_coords, n_resp, n_total,
                 cluster_threshold, valid_mask, p_values.shape,
                 test_type=test_type,
+                alternative=alternative,
                 seed=seeds[perm]
             ) for perm in range(n_permutations)
         )

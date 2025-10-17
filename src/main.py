@@ -68,8 +68,9 @@ CONFIG = {
     
     # Statistical parameters
     'test_type': 'unpaired',        # 'paired' or 'unpaired' t-test
-    'cluster_threshold': 0.01,      # p < 0.01 for cluster formation
-    'n_permutations': 500,         # Number of permutations
+    'alternative': 'greater',       # 'two-sided', 'greater' (resp > non-resp), or 'less'
+    'cluster_threshold': 0.05,      # p < 0.01 for cluster formation
+    'n_permutations': 100,         # Number of permutations
     'alpha': 0.05,                  # Cluster-level significance
     'n_jobs': -1,                   # Number of parallel jobs (-1 = all cores, 1 = sequential)
     
@@ -163,6 +164,12 @@ def main():
     logger.info(f"  Assets directory: {CONFIG['assets_dir']}")
     logger.info(f"  CSV file: {CONFIG['csv_file']}")
     logger.info(f"  Statistical test: {CONFIG['test_type'].capitalize()} t-test")
+    alt_text = {
+        'two-sided': 'two-sided (≠)',
+        'greater': f"one-sided ({CONFIG['group1_name']} > {CONFIG['group2_name']})",
+        'less': f"one-sided ({CONFIG['group1_name']} < {CONFIG['group2_name']})"
+    }
+    logger.info(f"  Alternative hypothesis: {alt_text.get(CONFIG['alternative'], CONFIG['alternative'])}")
     logger.info(f"  Cluster threshold: {CONFIG['cluster_threshold']}")
     logger.info(f"  Number of permutations: {CONFIG['n_permutations']}")
     logger.info(f"  Alpha level: {CONFIG['alpha']}")
@@ -202,7 +209,8 @@ def main():
     p_values, t_statistics, valid_mask = ttest_voxelwise(
         responders, 
         non_responders,
-        test_type=CONFIG['test_type']
+        test_type=CONFIG['test_type'],
+        alternative=CONFIG['alternative']
     )
     
     n_valid = np.sum(valid_mask)
@@ -227,6 +235,7 @@ def main():
         n_permutations=CONFIG['n_permutations'],
         alpha=CONFIG['alpha'],
         test_type=CONFIG['test_type'],
+        alternative=CONFIG['alternative'],
         n_jobs=CONFIG['n_jobs']
     )
     

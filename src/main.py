@@ -69,8 +69,8 @@ CONFIG = {
     # Statistical parameters
     'test_type': 'unpaired',        # 'paired' or 'unpaired' t-test
     'alternative': 'greater',       # 'two-sided', 'greater' (resp > non-resp), or 'less'
-    'cluster_threshold': 0.05,      # p < 0.01 for cluster formation
-    'n_permutations': 100,         # Number of permutations
+    'cluster_threshold': 0.01,      # p < 0.01 for cluster formation
+    'n_permutations': 1000,         # Number of permutations
     'alpha': 0.05,                  # Cluster-level significance
     'n_jobs': -1,                   # Number of parallel jobs (-1 = all cores, 1 = sequential)
     

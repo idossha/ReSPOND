@@ -26,7 +26,7 @@ matplotlib.use('Agg')  # Use non-interactive backend for PDF generation
 # DATA LOADING AND I/O
 # ==============================================================================
 
-def load_subject_data(csv_file, data_dir):
+def load_subject_data(csv_file, data_dir, return_ids=False):
     """
     Load subject classifications and corresponding NIfTI files
     
@@ -36,6 +36,8 @@ def load_subject_data(csv_file, data_dir):
         Path to CSV file with columns: subject_id, response, simulation_name
     data_dir : str
         Directory containing NIfTI files
+    return_ids : bool
+        If True, also return subject IDs
     
     Returns:
     --------
@@ -45,6 +47,10 @@ def load_subject_data(csv_file, data_dir):
         4D array of non-responder data
     template_img : nibabel image
         Template image for affine/header information
+    responder_ids : list (only if return_ids=True)
+        List of responder subject IDs
+    non_responder_ids : list (only if return_ids=True)
+        List of non-responder subject IDs
     """
     df = pd.read_csv(csv_file)
     
@@ -91,7 +97,10 @@ def load_subject_data(csv_file, data_dir):
     print(f"Responders shape: {responders.shape}")
     print(f"Non-responders shape: {non_responders.shape}")
     
-    return responders, non_responders, img
+    if return_ids:
+        return responders, non_responders, img, responder_ids, non_responder_ids
+    else:
+        return responders, non_responders, img
 
 
 def save_nifti(data, affine, header, filepath, dtype=np.float32):
@@ -331,7 +340,7 @@ def ttest_voxelwise(responders, non_responders, test_type='unpaired', alternativ
 
 def _run_single_permutation(test_data, test_coords, n_resp, n_total, cluster_threshold, 
                            valid_mask, p_values_shape, test_type='unpaired', 
-                           alternative='two-sided', seed=None):
+                           alternative='two-sided', seed=None, return_indices=False):
     """
     Helper function to run a single permutation (for parallel processing)
     
@@ -357,14 +366,20 @@ def _run_single_permutation(test_data, test_coords, n_resp, n_total, cluster_thr
         Alternative hypothesis (default: 'two-sided')
     seed : int, optional
         Random seed for reproducibility
+    return_indices : bool, optional
+        If True, return permutation indices along with max cluster size
     
     Returns:
     --------
     max_cluster_size : int
         Maximum cluster size in this permutation
+    perm_idx : ndarray (only if return_indices=True)
+        Permutation indices used
     """
     if seed is not None:
         np.random.seed(seed)
+    
+    perm_idx = None
     
     if test_type == 'paired':
         # For paired test, randomly flip signs of differences
@@ -378,6 +393,7 @@ def _run_single_permutation(test_data, test_coords, n_resp, n_total, cluster_thr
         
         # Randomly flip signs for each pair
         sign_flips = np.random.choice([-1, 1], size=n_resp)
+        perm_idx = sign_flips  # For paired, store sign flips
         
         # Create permuted data by flipping differences
         for i in range(n_voxels):
@@ -422,18 +438,73 @@ def _run_single_permutation(test_data, test_coords, n_resp, n_total, cluster_thr
     perm_mask = (perm_p_values < cluster_threshold) & valid_mask
     perm_labeled, perm_n_clusters = label(perm_mask)
     
-    # Return maximum cluster size
+    # Get maximum cluster size
     if perm_n_clusters > 0:
         perm_cluster_sizes = [np.sum(perm_labeled == cid) 
                              for cid in range(1, perm_n_clusters + 1)]
-        return max(perm_cluster_sizes)
+        max_cluster_size = max(perm_cluster_sizes)
     else:
-        return 0
+        max_cluster_size = 0
+    
+    # Return results
+    if return_indices:
+        return max_cluster_size, perm_idx
+    else:
+        return max_cluster_size
+
+
+def save_permutation_details(permutation_info, output_file, subject_ids_resp, subject_ids_non_resp):
+    """
+    Save detailed information about each permutation to a file
+    
+    Parameters:
+    -----------
+    permutation_info : list of dict
+        List containing permutation details with keys:
+        - 'perm_num': permutation number
+        - 'perm_idx': permutation indices
+        - 'max_cluster_size': maximum cluster size found
+    output_file : str
+        Path to output file
+    subject_ids_resp : list
+        Original responder subject IDs
+    subject_ids_non_resp : list
+        Original non-responder subject IDs
+    """
+    all_subject_ids = subject_ids_resp + subject_ids_non_resp
+    n_resp = len(subject_ids_resp)
+    
+    with open(output_file, 'w') as f:
+        f.write("="*80 + "\n")
+        f.write("PERMUTATION TEST DETAILS\n")
+        f.write("="*80 + "\n\n")
+        f.write(f"Total permutations: {len(permutation_info)}\n")
+        f.write(f"Original Responders (n={n_resp}): {subject_ids_resp}\n")
+        f.write(f"Original Non-Responders (n={len(subject_ids_non_resp)}): {subject_ids_non_resp}\n")
+        f.write("\n" + "="*80 + "\n\n")
+        
+        for info in permutation_info:
+            perm_num = info['perm_num']
+            perm_idx = info['perm_idx']
+            max_size = info['max_cluster_size']
+            
+            # Get permuted groups
+            perm_resp_ids = [all_subject_ids[i] for i in perm_idx[:n_resp]]
+            perm_non_resp_ids = [all_subject_ids[i] for i in perm_idx[n_resp:]]
+            
+            f.write(f"Permutation {perm_num:4d}: ")
+            f.write(f"Responders: {perm_resp_ids}, ")
+            f.write(f"Non-Responders: {perm_non_resp_ids}, ")
+            f.write(f"Max Cluster: {max_size:6d} voxels\n")
+    
+    print(f"Saved permutation details to: {output_file}")
 
 
 def cluster_based_correction(responders, non_responders, p_values, valid_mask, 
                             cluster_threshold=0.01, n_permutations=500, alpha=0.05,
-                            test_type='unpaired', alternative='two-sided', n_jobs=-1, verbose=True):
+                            test_type='unpaired', alternative='two-sided', n_jobs=-1, verbose=True,
+                            save_permutation_log=False, permutation_log_file=None,
+                            subject_ids_resp=None, subject_ids_non_resp=None):
     """
     Apply cluster-based permutation correction for multiple comparisons
     
@@ -464,6 +535,15 @@ def cluster_based_correction(responders, non_responders, p_values, valid_mask,
         Number of parallel jobs. -1 uses all available CPU cores. 1 disables parallelization.
     verbose : bool
         Print progress information
+    save_permutation_log : bool
+        If True, save detailed permutation information to file
+    permutation_log_file : str, optional
+        Path to save permutation log. If None and save_permutation_log=True, 
+        will use default name
+    subject_ids_resp : list, optional
+        List of responder subject IDs (for logging)
+    subject_ids_non_resp : list, optional
+        List of non-responder subject IDs (for logging)
     
     Returns:
     --------
@@ -553,30 +633,48 @@ def cluster_based_correction(responders, non_responders, p_values, valid_mask,
     # Use seeds for reproducibility
     seeds = np.random.randint(0, 2**31, size=n_permutations)
     
+    # Determine if we need to track permutation indices
+    track_indices = save_permutation_log and subject_ids_resp is not None and subject_ids_non_resp is not None
+    
     if n_jobs == 1:
         # Sequential execution with progress bar
         null_max_cluster_sizes = []
+        permutation_indices = [] if track_indices else None
         iterator = tqdm(range(n_permutations), desc="Permutations") if verbose else range(n_permutations)
         for perm in iterator:
-            max_size = _run_single_permutation(
+            result = _run_single_permutation(
                 test_data, test_coords, n_resp, n_total, 
                 cluster_threshold, valid_mask, p_values.shape, 
                 test_type=test_type,
                 alternative=alternative,
-                seed=seeds[perm]
+                seed=seeds[perm],
+                return_indices=track_indices
             )
-            null_max_cluster_sizes.append(max_size)
+            if track_indices:
+                max_size, perm_idx = result
+                null_max_cluster_sizes.append(max_size)
+                permutation_indices.append(perm_idx)
+            else:
+                null_max_cluster_sizes.append(result)
     else:
         # Parallel execution
-        null_max_cluster_sizes = Parallel(n_jobs=n_jobs, verbose=10 if verbose else 0)(
+        results = Parallel(n_jobs=n_jobs, verbose=10 if verbose else 0)(
             delayed(_run_single_permutation)(
                 test_data, test_coords, n_resp, n_total,
                 cluster_threshold, valid_mask, p_values.shape,
                 test_type=test_type,
                 alternative=alternative,
-                seed=seeds[perm]
+                seed=seeds[perm],
+                return_indices=track_indices
             ) for perm in range(n_permutations)
         )
+        
+        if track_indices:
+            null_max_cluster_sizes = [r[0] for r in results]
+            permutation_indices = [r[1] for r in results]
+        else:
+            null_max_cluster_sizes = results
+            permutation_indices = None
     
     # Step 4: Determine cluster size threshold
     null_max_cluster_sizes = np.array(null_max_cluster_sizes)
@@ -587,6 +685,26 @@ def cluster_based_correction(responders, non_responders, p_values, valid_mask,
         print(f"Null distribution stats: min={np.min(null_max_cluster_sizes):.0f}, "
               f"mean={np.mean(null_max_cluster_sizes):.1f}, "
               f"max={np.max(null_max_cluster_sizes):.0f}")
+    
+    # Save permutation details if requested
+    if save_permutation_log and permutation_indices is not None:
+        if permutation_log_file is None:
+            permutation_log_file = "permutation_details.txt"
+        
+        # Prepare permutation info
+        permutation_info = []
+        for perm_num in range(n_permutations):
+            permutation_info.append({
+                'perm_num': perm_num,
+                'perm_idx': permutation_indices[perm_num],
+                'max_cluster_size': null_max_cluster_sizes[perm_num]
+            })
+        
+        save_permutation_details(permutation_info, permutation_log_file, 
+                                subject_ids_resp, subject_ids_non_resp)
+        
+        if verbose:
+            print(f"Saved permutation details to: {permutation_log_file}")
     
     # Step 5: Identify significant clusters
     sig_mask = np.zeros_like(p_values, dtype=int)
